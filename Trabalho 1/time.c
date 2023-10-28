@@ -1,59 +1,76 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/time.h>
+#include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
+#include <string.h>
 #include <errno.h>
+#include <sys/time.h>
+#include <time.h>
+#include <sys/shm.h>
 
-void execute_command(const char *path, const char *argument, double *total_time) {
-    struct timeval start, end;
-    double elapsed_time;
+int erro;
 
-    gettimeofday(&start, NULL);
+void executeCommand(const char* command, const char* argument);
+void printExecutionTimeAndError(int erro, struct timeval inicio, struct timeval fim);
+double calculateTimeDifference(struct timeval inicio, struct timeval fim);
 
-    pid_t pid = fork();
+int main(void) {
+    char entrada1[255];
+    char entrada2[255];
+    pid_t pid = 1;
+    struct timeval inicio, fim, inicio2, fim2;
+    int shm_id;
+    double soma = 0;
+    int erro;
 
-    if (pid == -1) {
-        perror("Erro ao criar um processo filho");
-        exit(EXIT_FAILURE);
-    } else if (pid == 0) {
-        execl(path, path, argument, (char *)NULL);
-        perror("Erro ao executar o comando");
-        exit(EXIT_FAILURE);
-    } else {
-        int status;
-        waitpid(pid, &status, 0);
+    gettimeofday(&inicio2, NULL);
 
-        gettimeofday(&end, NULL);
-        elapsed_time = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_usec - start.tv_usec) / 1000000.0;
+    while (scanf("%s %s", entrada1, entrada2) != EOF) {
+        fflush(stdout);
+        pid = fork();
+        gettimeofday(&inicio, NULL);
 
-        if (WIFEXITED(status)) {
-            printf("> Demorou %.1f segundos, retornou %d\n", elapsed_time, WEXITSTATUS(status));
+        if (pid == 0) {
+            executeCommand(entrada1, entrada2);
         } else {
-            printf("> Erro: %s\n", strerror(errno));
+            waitpid(pid, &erro, WUNTRACED);
+            erro = WEXITSTATUS(erro);
+            
+            gettimeofday(&fim, NULL);
+            printExecutionTimeAndError(erro, inicio, fim);
         }
-
-        *total_time += elapsed_time;
     }
-}
+    gettimeofday(&fim2, NULL);
 
-int main() {
-    char line[512];
-    char path[256];
-    char argument[256];
-    double total_time = 0.0;
-
-    while (fgets(line, sizeof(line), stdin)) {
-        if (sscanf(line, "%s %s", path, argument) != 2) {
-            fprintf(stderr, "Erro na entrada: Formato inválido\n");
-            continue;
-        }
-
-        execute_command(path, argument, &total_time);
+    double periodo2 = calculateTimeDifference(inicio2, fim2);
+    if (pid != 0) {
+        printf(">> O tempo total foi de %0.1lf segundos\n", periodo2);
     }
-
-    printf(">> O tempo total foi de %.1f segundos\n", total_time);
 
     return 0;
+}
+
+void executeCommand(const char* command, const char* argument) {
+    execl(command, command, argument, NULL);
+
+    if (strerror(errno) != "Success") {
+        printf("> Erro: %s\n", strerror(errno));
+    }
+
+    fflush(stdout);
+    erro = errno;
+
+    fclose(stdin);
+    exit(errno);
+}
+
+void printExecutionTimeAndError(int erro, struct timeval inicio, struct timeval fim) {
+    double periodo = calculateTimeDifference(inicio, fim);
+    printf("> Demorou %0.1lf segundos, retornou %i\n", periodo, erro);
+    fflush(stdout);
+}
+
+double calculateTimeDifference(struct timeval inicio, struct timeval fim) {
+    return (fim.tv_sec - inicio.tv_sec) + 1e-6 * (fim.tv_usec - inicio.tv_usec);
 }
